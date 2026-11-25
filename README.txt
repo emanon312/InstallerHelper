@@ -10,7 +10,7 @@
 
 怎么用
 ------
-1. 双击 Start-InstallerHelper.cmd
+1. 双击 InstallerHelper.exe（用源码的话是 Start-InstallerHelper.cmd）
 2. 把安装包拖进上面的框（exe / msi / msix），也可以点框选文件
 3. 目录自动填好 D:\我的应用\<软件名>，想改就改
 4. 想把配置也搬走：勾上"把配置数据也搬到 D 盘"
