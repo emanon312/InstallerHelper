@@ -10,7 +10,9 @@
 
 ## 快速开始
 
-下载 `InstallerHelper.exe` 双击运行。或者用源码版：双击 `Start-InstallerHelper.cmd`。
+到 [Releases](https://github.com/emanon312/InstallerHelper/releases) 下载 `InstallerHelper.exe` 双击运行。
+
+或者用源码版：双击 `Start-InstallerHelper.cmd`（PowerShell 5.1，Windows 自带）。
 
 ## 怎么用
 
