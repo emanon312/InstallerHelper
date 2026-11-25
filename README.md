@@ -1,6 +1,6 @@
 # InstallerHelper
 
-把 Windows 软件装到你指定的目录，顺便把 AppData 里的配置数据也搬到别的盘。
+把 Windows 软件装到你指定的目录，顺便把 AppData 里的配置数据也搬到别的盘。窗口就这么大，不挡事。
 
 ![界面](screenshot.png)
 
@@ -51,6 +51,7 @@
 - 数据迁移靠目录名相似度匹配，中文软件名可能匹配不上，得手动勾
 - `%APPDATA%` 下的目录常在软件跑过一次后才出现，第一次没搬到就再点一次
 - 迁移没有事务保证，中途断电要手动还原
+- 打包版的窗口在高 DPI 上会被系统放大一点，字可能略糊，用源码版则没有这个现象
 
 ## 文件
 
@@ -59,7 +60,7 @@
 | `InstallerHelper.ps1` | 界面 |
 | `helper-core.ps1` | 识别安装器 / 静默安装 / 目录迁移 |
 | `Start-InstallerHelper.cmd` | 源码版启动器 |
-| `InstallerHelper.exe` | 打包版（ps2exe 编译，162 KB） |
+| `InstallerHelper.exe` | 打包版（ps2exe 编译，166 KB） |
 | `app.ico` | 图标 |
 
 打包版运行时会把 `helper-core.ps1`、`app.ico`、`README.txt` 释放到 `%LOCALAPPDATA%\InstallerHelper`，配置和日志也放在那里。
@@ -76,7 +77,7 @@ Import-Module .\.tools\ps2exe\ps2exe.psd1 -Force
 Invoke-PS2EXE -inputFile .\InstallerHelper.ps1 -outputFile .\InstallerHelper.exe `
   -noConsole -STA -x64 -iconFile .\app.ico `
   -title 'InstallerHelper' -description '把安装包装到指定目录，并把配置数据搬到 D 盘' `
-  -product 'InstallerHelper' -company 'emanon312' -version '1.0.0.0' `
+  -product 'InstallerHelper' -company 'emanon312' -version '1.1.0.0' `
   -embedFiles @{
     '%LOCALAPPDATA%\InstallerHelper\helper-core.ps1' = '.\helper-core.ps1'
     '%LOCALAPPDATA%\InstallerHelper\app.ico'        = '.\app.ico'

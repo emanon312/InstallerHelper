@@ -15,6 +15,38 @@ function Write-Log {
     }
 }
 
+# ---------------------------------------------------------------- 无窗口执行
+# 本工具用 -noConsole 编译的 exe 或隐藏窗口的 powershell 跑，此时用 & 或 Start-Process
+# 调 cmd / robocopy / taskkill 这类控制台程序，会弹出一个黑色窗口（失败时还带红字一闪而过）。
+# 统一走 ProcessStartInfo + CreateNoWindow，彻底不建窗口。
+
+function Start-HiddenProcess {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [string]$Arguments = ''
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    return [System.Diagnostics.Process]::Start($psi)
+}
+
+function Invoke-Hidden {
+    # 同步跑一个控制台程序，返回退出码；不建窗口、不抓输出
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [string]$Arguments = ''
+    )
+    $p = Start-HiddenProcess -FilePath $FilePath -Arguments $Arguments
+    $p.WaitForExit()
+    $rc = $p.ExitCode
+    $p.Dispose()
+    return $rc
+}
+
 # ---------------------------------------------------------------- 二进制读取
 
 function Read-BinaryChunk {
@@ -399,11 +431,11 @@ function Install-Silent {
             'NSIS' {
                 # /D 必须是最后一个参数，且不能加引号
                 $argStr = "/S /D=$InstallDir"
-                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru
+                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru -WindowStyle Hidden
             }
             'InnoSetup' {
                 $argStr = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR=`"$InstallDir`" /LOG=`"$tmpLog`""
-                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru
+                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru -WindowStyle Hidden
             }
             'MSI' {
                 $props = @(Get-MsiInstallDirProperty -Path $Path)
@@ -411,21 +443,21 @@ function Install-Silent {
                 if ($props.Count -gt 0) {
                     foreach ($p in $props) { $argStr += " $p=`"$InstallDir`"" }
                 }
-                $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList $argStr -PassThru
+                $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList $argStr -PassThru -WindowStyle Hidden
             }
             'InstallShield' {
                 # /v 的值里有空格时必须嵌套转义，否则命令行会被切成两段
                 $dir = $InstallDir.TrimEnd('\')
                 $argStr = '/s /v"/qn INSTALLDIR=\"' + $dir + '\""'
-                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru
+                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru -WindowStyle Hidden
             }
             'WiXBundle' {
                 $argStr = "/install /quiet /norestart"
-                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru
+                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru -WindowStyle Hidden
             }
             'Squirrel' {
                 $argStr = "--silent"
-                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru
+                $proc = Start-Process -FilePath $Path -ArgumentList $argStr -PassThru -WindowStyle Hidden
             }
             default {
                 return (& $result $false $null $null "这个包识别不出类型（$Kind），没法静默安装。可以手动装完再用『高级选项 → 把软件目录迁到 D 盘』。" $false)
@@ -449,7 +481,7 @@ function Install-Silent {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not $proc.HasExited) {
         if ((Get-Date) -gt $deadline) {
-            try { & taskkill.exe /PID $proc.Id /T /F 2>$null | Out-Null } catch { try { $proc.Kill() } catch { } }
+            try { $null = Invoke-Hidden 'taskkill.exe' "/PID $($proc.Id) /T /F" } catch { try { $proc.Kill() } catch { } }
             $after = Get-UninstallSnapshot
             $ne = @(Get-NewUninstallEntries -Before $before -After $after -SkipBundled)
             $r = & $result $false $null $null "安装超时（${TimeoutSeconds} 秒），已结束进程树。可能留下半个安装，建议检查目标目录或重装。" $false
@@ -569,11 +601,11 @@ function Invoke-Robocopy {
     $all = @($Arguments)
     if ($Move) { $all += '/MOVE' }
     $all += @('/E', '/COPY:DAT', '/R:1', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
-    $p = Start-Process -FilePath 'robocopy.exe' -ArgumentList $all -PassThru -WindowStyle Hidden
+    $p = Start-HiddenProcess -FilePath 'robocopy.exe' -Arguments ($all -join ' ')
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not $p.HasExited) {
         if ((Get-Date) -gt $deadline) {
-            try { & taskkill.exe /PID $p.Id /T /F 2>$null | Out-Null } catch { try { $p.Kill() } catch { } }
+            try { $null = Invoke-Hidden 'taskkill.exe' "/PID $($p.Id) /T /F" } catch { try { $p.Kill() } catch { } }
             return 9999
         }
         if ($null -ne $script:Tick) { & $script:Tick }
@@ -643,17 +675,17 @@ function Move-DirWithJunction {
         return (& $fail "无法重命名源目录（可能有程序正占用）：$($_.Exception.Message)。源目录未改动。" $null)
     }
 
-    $out = @(& cmd /c "mklink /J `"$srcFull`" `"$dstFull`" 2>&1")
+    $rcLink = Invoke-Hidden 'cmd.exe' "/c mklink /J `"$srcFull`" `"$dstFull`""
     $ok = (Test-Path -LiteralPath $srcFull) -and (Test-IsJunction $srcFull)
 
     if (-not $ok) {
         # 回滚：删掉可能建了一半的链接，把原名改回去
         try {
-            if (Test-Path -LiteralPath $srcFull) { & cmd /c "rmdir `"$srcFull`"" 2>$null | Out-Null }
+            if (Test-Path -LiteralPath $srcFull) { $null = Invoke-Hidden 'cmd.exe' "/c rmdir `"$srcFull`"" }
             Move-Item -LiteralPath $backup -Destination $srcFull -Force -ErrorAction Stop
-            return (& $fail ("建链接失败（{0}）。原目录已还原，数据副本留在 {1}，可以手动删。" -f ($out -join ' '), $dstFull) $null)
+            return (& $fail ("建链接失败（mklink 退出码 {0}）。原目录已还原，数据副本留在 {1}，可以手动删。" -f ("$rcLink"), $dstFull) $null)
         } catch {
-            return (& $fail ("建链接失败（{0}），且原目录还原也失败了。原目录内容现在在 {1}，请手动改回。" -f ($out -join ' '), $backup) $backup)
+            return (& $fail ("建链接失败（mklink 退出码 {0}），且原目录还原也失败了。原目录内容现在在 {1}，请手动改回。" -f ("$rcLink"), $backup) $backup)
         }
     }
 
@@ -665,7 +697,7 @@ function Remove-Junction {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return }
     if (-not (Test-IsJunction $Path)) { throw "不是链接，拒绝删除：$Path" }
-    & cmd /c "rmdir `"$Path`"" 2>&1 | Out-Null
+    $null = Invoke-Hidden 'cmd.exe' "/c rmdir `"$Path`""
     if (Test-Path -LiteralPath $Path) { throw "删除链接失败：$Path" }
 }
 
@@ -681,7 +713,7 @@ function Restore-Junction {
     }
     $staging = $Path + '.ih_restore_' + (Get-Date -Format 'HHmmss')
     try {
-        & cmd /c "rmdir `"$Path`"" 2>$null | Out-Null
+        $null = Invoke-Hidden 'cmd.exe' "/c rmdir `"$Path`""
         if (Test-Path -LiteralPath $Path) { throw "无法删除链接（可能被占用）" }
         $rc = Invoke-Robocopy -Arguments @("`"$target`"", "`"$Path`"") -TimeoutSeconds $TimeoutSeconds -Move
         if ($rc -ge 8) { throw "复制回原路径失败（robocopy 退出码 $rc）" }

@@ -18,34 +18,44 @@ if (-not (Test-Path -LiteralPath $script:CorePath)) {
 . $script:CorePath
 
 # ================================================================ 设计变量
+# 瑞士国际主义（Swiss Style / IKB）：纸面灰白 + 单一高亮色 + 直角 + 1px 细线 + 大留白。
+# 不混搭第二个高亮色；红色只在出错时出现。
 $C = @{
-    Bg        = [System.Drawing.Color]::FromArgb(245, 246, 248)
-    Surface   = [System.Drawing.Color]::FromArgb(255, 255, 255)
-    Border    = [System.Drawing.Color]::FromArgb(226, 228, 233)
-    BorderHi  = [System.Drawing.Color]::FromArgb(37, 99, 235)
-    Text      = [System.Drawing.Color]::FromArgb(31, 35, 40)
-    Muted     = [System.Drawing.Color]::FromArgb(107, 114, 128)
-    Primary   = [System.Drawing.Color]::FromArgb(37, 99, 235)
-    PrimaryHi = [System.Drawing.Color]::FromArgb(29, 78, 216)
-    PrimaryLo = [System.Drawing.Color]::FromArgb(191, 206, 250)
-    Ok        = [System.Drawing.Color]::FromArgb(21, 128, 61)
-    Err       = [System.Drawing.Color]::FromArgb(220, 38, 38)
-    Tint      = [System.Drawing.Color]::FromArgb(239, 246, 255)
-    LogBg     = [System.Drawing.Color]::FromArgb(250, 251, 252)
+    Paper    = [System.Drawing.Color]::FromArgb(250, 250, 248)
+    Surface  = [System.Drawing.Color]::FromArgb(255, 255, 255)
+    Grey1    = [System.Drawing.Color]::FromArgb(240, 240, 238)
+    Grey2    = [System.Drawing.Color]::FromArgb(212, 212, 210)
+    Grey3    = [System.Drawing.Color]::FromArgb(115, 115, 115)
+    Ink      = [System.Drawing.Color]::FromArgb(10, 10, 10)
+    Accent   = [System.Drawing.Color]::FromArgb(0, 47, 167)
+    AccentHi = [System.Drawing.Color]::FromArgb(0, 32, 116)
+    AccentOn = [System.Drawing.Color]::FromArgb(255, 255, 255)
+    Err      = [System.Drawing.Color]::FromArgb(193, 29, 29)
+    Tint     = [System.Drawing.Color]::FromArgb(243, 245, 250)
 }
+# 兼容旧键名，下面的逻辑代码继续用这些
+$C.Bg = $C.Paper
+$C.Border = $C.Grey2
+$C.BorderHi = $C.Accent
+$C.Text = $C.Ink
+$C.Muted = $C.Grey3
+$C.Primary = $C.Accent
+$C.PrimaryHi = $C.AccentHi
+$C.PrimaryLo = [System.Drawing.Color]::FromArgb(155, 165, 200)
+$C.Ok = $C.Accent
+$C.LogBg = $C.Grey1
 
 $FB = 'Microsoft YaHei UI'
 $script:F = @{
-    H1     = New-Object System.Drawing.Font($FB, 15, [System.Drawing.FontStyle]::Bold)
-    Body   = New-Object System.Drawing.Font($FB, 10)
-    Label  = New-Object System.Drawing.Font($FB, 10)
-    Small  = New-Object System.Drawing.Font($FB, 9)
-    SmallB = New-Object System.Drawing.Font($FB, 9, [System.Drawing.FontStyle]::Bold)
-    Btn    = New-Object System.Drawing.Font($FB, 11, [System.Drawing.FontStyle]::Bold)
-    Mono   = New-Object System.Drawing.Font('Consolas', 9)
-    Link   = New-Object System.Drawing.Font($FB, 9)
+    H1     = New-Object System.Drawing.Font($FB, 16, [System.Drawing.FontStyle]::Bold)
+    Body   = New-Object System.Drawing.Font($FB, 9)
+    Label  = New-Object System.Drawing.Font($FB, 8)
+    Small  = New-Object System.Drawing.Font($FB, 8)
+    SmallB = New-Object System.Drawing.Font($FB, 8, [System.Drawing.FontStyle]::Bold)
+    Btn    = New-Object System.Drawing.Font($FB, 10.5, [System.Drawing.FontStyle]::Bold)
+    Mono   = New-Object System.Drawing.Font('Consolas', 8)
+    Link   = New-Object System.Drawing.Font($FB, 8)
 }
-
 function New-RoundRectPath {
     param([int]$W, [int]$H, [int]$R)
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -112,7 +122,7 @@ $script:Tick = { [System.Windows.Forms.Application]::DoEvents() }
 
 # ================================================================ 配置
 $script:ConfigPath = Join-Path $script:Root 'config.json'
-$script:Config = @{ InstallRoot = 'D:\我的应用'; DataRoot = 'D:\我的应用'; Desktop = $true; StartMenu = $true }
+$script:Config = @{ InstallRoot = 'D:\我的应用'; DataRoot = 'D:\我的应用'; Desktop = $true; StartMenu = $true; RedirectData = $false }
 
 function Test-ValidRoot {
     param([string]$Path)
@@ -128,7 +138,7 @@ if (Test-Path -LiteralPath $script:ConfigPath) {
         foreach ($k in @('InstallRoot', 'DataRoot')) {
             if ($l.$k -and (Test-ValidRoot ([string]$l.$k))) { $script:Config[$k] = [string]$l.$k }
         }
-        foreach ($k in @('Desktop', 'StartMenu')) {
+        foreach ($k in @('Desktop', 'StartMenu', 'RedirectData')) {
             if ($null -ne $l.$k) { $script:Config[$k] = [bool]$l.$k }
         }
     } catch { }
@@ -145,11 +155,10 @@ function Save-Config {
 # ================================================================ 窗体
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'InstallerHelper'
-$form.ClientSize = New-Object System.Drawing.Size(764, 561)
 $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox = $false
 $form.StartPosition = 'CenterScreen'
-$form.BackColor = $C.Bg
+$form.BackColor = $C.Paper
 $form.Font = $F.Body
 $form.AllowDrop = $true
 $form.Icon = [System.Drawing.SystemIcons]::Application
@@ -162,6 +171,11 @@ if (Test-Path -LiteralPath $icoPath) {
     } catch { }
 }
 
+# 窗口只有两种高度：日志收起 / 展开
+$script:HCompact = 366
+$script:HExpanded = 518
+$form.ClientSize = New-Object System.Drawing.Size(520, $script:HCompact)
+
 function Set-Busy {
     param([bool]$On)
     $script:Busy = $On
@@ -173,12 +187,43 @@ function Set-Busy {
     $lnkAdv.Enabled = -not $On
     $drop.AllowDrop = -not $On
     $form.UseWaitCursor = $On
+    if ($On) {
+        $btnGo.BackColor = $C.PrimaryLo
+        $btnGo.FlatAppearance.MouseOverBackColor = $C.PrimaryLo
+    } else {
+        $btnGo.BackColor = $C.Primary
+        $btnGo.FlatAppearance.MouseOverBackColor = $C.PrimaryHi
+    }
 }
+
+# ---------------------------------------------------------------- 顶栏
+$lblBrand = New-Object System.Windows.Forms.Label
+$lblBrand.Text = 'INSTALLER HELPER'
+$lblBrand.Location = New-Object System.Drawing.Point(24, 13)
+$lblBrand.AutoSize = $true
+$lblBrand.ForeColor = $C.Grey3
+$lblBrand.Font = $F.Label
+$form.Controls.Add($lblBrand)
+
+$lblVer = New-Object System.Windows.Forms.Label
+$lblVer.Text = 'v1.0.0'
+$lblVer.Location = New-Object System.Drawing.Point(424, 13)
+$lblVer.Size = New-Object System.Drawing.Size(72, 15)
+$lblVer.TextAlign = 'MiddleRight'
+$lblVer.ForeColor = $C.Grey3
+$lblVer.Font = $F.Label
+$form.Controls.Add($lblVer)
+
+$rule = New-Object System.Windows.Forms.Panel
+$rule.Location = New-Object System.Drawing.Point(24, 36)
+$rule.Size = New-Object System.Drawing.Size(472, 1)
+$rule.BackColor = $C.Grey2
+$form.Controls.Add($rule)
 
 # ---------------------------------------------------------------- 拖放区（主角）
 $drop = New-Object System.Windows.Forms.Panel
-$drop.Location = New-Object System.Drawing.Point(32, 28)
-$drop.Size = New-Object System.Drawing.Size(700, 132)
+$drop.Location = New-Object System.Drawing.Point(24, 52)
+$drop.Size = New-Object System.Drawing.Size(472, 98)
 $drop.AllowDrop = $true
 $drop.BackColor = $C.Surface
 $drop.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -190,92 +235,126 @@ $drop.add_Paint({
     param($s, $e)
     try {
         $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $g.Clear($C.Surface)
-        $r = New-RoundRectPath -W ($s.Width - 2) -H ($s.Height - 2) -R 12
-        $borderColor = if ($script:DropHover) { $C.BorderHi } elseif ($script:DropFailed) { $C.Err } else { [System.Drawing.Color]::FromArgb(203, 213, 225) }
-        $pen = New-Object System.Drawing.Pen($borderColor, 1.5)
-        $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
-        $g.DrawPath($pen, $r)
-        $pen.Dispose()
-        $r.Dispose()
+        $w = [int]$s.Width
+        $h = [int]$s.Height
+        $bg = $C.Surface
+        if ($script:DropHover) { $bg = $C.Tint }
+        $g.Clear($bg)
 
-        $sf = New-Object System.Drawing.StringFormat
+        $bc = $C.Grey2
+        $bw = 1.0
+        if ($script:DropHover) { $bc = $C.Accent; $bw = 2.0 }
+        elseif ($script:DropFailed) { $bc = $C.Err; $bw = 2.0 }
+        $pen = [System.Drawing.Pen]::new($bc, [float]$bw)
+        $g.DrawRectangle($pen, 0, 0, ($w - 1), ($h - 1))
+        $pen.Dispose()
+
+        $titleColor = $C.Ink
+        if ($script:DropHover) { $titleColor = $C.Accent }
+        elseif ($script:DropFailed) { $titleColor = $C.Err }
+
+        $title = '拖入安装包'
+        $sub = 'exe / msi / msix · 或点这里选文件'
+        if ($script:DropPath) {
+            $title = [System.IO.Path]::GetFileName($script:DropPath)
+            $sub = '已识别 · 点下面的按钮'
+        } elseif ($script:DropFailed) {
+            $title = '这个包认不出来'
+            $sub = '换成 exe / msi 试试，或点这里手动选'
+        }
+
+        $sf = [System.Drawing.StringFormat]::new()
         $sf.Alignment = [System.Drawing.StringAlignment]::Center
         $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-        $bTitle = New-Object System.Drawing.SolidBrush($(if ($script:DropHover) { $C.BorderHi } elseif ($script:DropFailed) { $C.Err } else { $C.Text }))
-        $bSub = New-Object System.Drawing.SolidBrush($C.Muted)
-        $rect1 = New-Object System.Drawing.RectangleF(0, 30, $s.Width, 34)
-        $rect2 = New-Object System.Drawing.RectangleF(0, 66, $s.Width, 26)
-        $title = if ($script:DropPath) { [System.IO.Path]::GetFileName($script:DropPath) } elseif ($script:DropFailed) { '这个包认不出来' } else { '拖入安装包' }
-        $g.DrawString($title, $F.H1, $bTitle, $rect1, $sf)
-        $sub = if ($script:DropPath) { '已识别，点下方按钮开始安装' } elseif ($script:DropFailed) { '换成 exe / msi 试试，或者点这里手动选' } else { 'exe / msi，也可以点一下这里选文件' }
-        $g.DrawString($sub, $F.Small, $bSub, $rect2, $sf)
-        $bTitle.Dispose()
-        $bSub.Dispose()
-        $sf.Dispose()
+        $sf.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+        $sf.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
+        $cw = [float]($w - 20)
+        $r1 = [System.Drawing.RectangleF]::new([float]10, [float]26, $cw, [float]36)
+        $r2 = [System.Drawing.RectangleF]::new([float]10, [float]64, $cw, [float]18)
+        $bT = [System.Drawing.SolidBrush]::new($titleColor)
+        $bS = [System.Drawing.SolidBrush]::new($C.Grey3)
+        $g.DrawString($title, $F.H1, $bT, $r1, $sf)
+        $g.DrawString($sub, $F.Small, $bS, $r2, $sf)
+        $bT.Dispose(); $bS.Dispose(); $sf.Dispose()
     } catch { }
 })
 $form.Controls.Add($drop)
 
-# ---------------------------------------------------------------- 安装目录
+# ---------------------------------------------------------------- 装到
 $lblTo = New-Object System.Windows.Forms.Label
 $lblTo.Text = '装到'
-$lblTo.Location = New-Object System.Drawing.Point(34, 189)
+$lblTo.Location = New-Object System.Drawing.Point(24, 164)
 $lblTo.AutoSize = $true
-$lblTo.ForeColor = $C.Muted
+$lblTo.ForeColor = $C.Grey3
+$lblTo.Font = $F.Label
 $form.Controls.Add($lblTo)
 
 $txtDir = New-Object System.Windows.Forms.TextBox
-$txtDir.Location = New-Object System.Drawing.Point(100, 186)
-$txtDir.Size = New-Object System.Drawing.Size(520, 26)
+$txtDir.Location = New-Object System.Drawing.Point(24, 182)
+$txtDir.Size = New-Object System.Drawing.Size(372, 24)
 $txtDir.BorderStyle = 'FixedSingle'
 $txtDir.BackColor = $C.Surface
-$txtDir.ForeColor = $C.Text
+$txtDir.ForeColor = $C.Ink
 $txtDir.Font = $F.Body
 $form.Controls.Add($txtDir)
 
 $btnDir = New-Object System.Windows.Forms.Button
-$btnDir.Text = '选择'
-$btnDir.Location = New-Object System.Drawing.Point(630, 184)
-$btnDir.Size = New-Object System.Drawing.Size(102, 30)
+$btnDir.Text = '浏览'
+$btnDir.Location = New-Object System.Drawing.Point(404, 181)
+$btnDir.Size = New-Object System.Drawing.Size(92, 26)
 $btnDir.FlatStyle = 'Flat'
 $btnDir.FlatAppearance.BorderSize = 1
-$btnDir.FlatAppearance.BorderColor = $C.Border
+$btnDir.FlatAppearance.BorderColor = $C.Grey2
+$btnDir.FlatAppearance.MouseOverBackColor = $C.Grey1
+$btnDir.FlatAppearance.MouseDownBackColor = $C.Grey2
 $btnDir.BackColor = $C.Surface
-$btnDir.ForeColor = $C.Text
+$btnDir.ForeColor = $C.Ink
 $btnDir.Font = $F.Small
 $btnDir.Cursor = 'Hand'
 $form.Controls.Add($btnDir)
 
 # ---------------------------------------------------------------- 数据目录
 $chkData = New-Object System.Windows.Forms.CheckBox
-$chkData.Text = '把配置数据也搬到 D 盘（AppData 里的东西）'
-$chkData.Location = New-Object System.Drawing.Point(100, 228)
-$chkData.AutoSize = $true
-$chkData.ForeColor = $C.Text
+$chkData.Text = '把配置数据也搬到 D 盘'
+$chkData.Location = New-Object System.Drawing.Point(24, 218)
+$chkData.Size = New-Object System.Drawing.Size(472, 22)
+$chkData.Appearance = 'Button'
+$chkData.FlatStyle = 'Flat'
+$chkData.UseVisualStyleBackColor = $false
+$chkData.FlatAppearance.BorderSize = 1
+$chkData.FlatAppearance.BorderColor = $C.Grey2
+$chkData.FlatAppearance.MouseOverBackColor = $C.Grey1
+$chkData.FlatAppearance.CheckedBackColor = $C.Tint
+$chkData.FlatAppearance.MouseDownBackColor = $C.AccentHi
+$chkData.TextAlign = 'MiddleLeft'
+$chkData.Padding = New-Object System.Windows.Forms.Padding(12, 0, 0, 0)
+$chkData.BackColor = $C.Surface
+$chkData.ForeColor = $C.Ink
 $chkData.Font = $F.Body
+$chkData.Cursor = 'Hand'
 $form.Controls.Add($chkData)
 
 $txtData = New-Object System.Windows.Forms.TextBox
-$txtData.Location = New-Object System.Drawing.Point(100, 258)
-$txtData.Size = New-Object System.Drawing.Size(520, 26)
+$txtData.Location = New-Object System.Drawing.Point(24, 244)
+$txtData.Size = New-Object System.Drawing.Size(372, 24)
 $txtData.BorderStyle = 'FixedSingle'
-$txtData.BackColor = $C.Bg
-$txtData.ForeColor = $C.Muted
+$txtData.BackColor = $C.Grey1
+$txtData.ForeColor = $C.Grey3
 $txtData.Font = $F.Body
 $txtData.Enabled = $false
 $form.Controls.Add($txtData)
 
 $btnData = New-Object System.Windows.Forms.Button
-$btnData.Text = '选择'
-$btnData.Location = New-Object System.Drawing.Point(630, 256)
-$btnData.Size = New-Object System.Drawing.Size(102, 30)
+$btnData.Text = '浏览'
+$btnData.Location = New-Object System.Drawing.Point(404, 243)
+$btnData.Size = New-Object System.Drawing.Size(92, 26)
 $btnData.FlatStyle = 'Flat'
 $btnData.FlatAppearance.BorderSize = 1
-$btnData.FlatAppearance.BorderColor = $C.Border
+$btnData.FlatAppearance.BorderColor = $C.Grey2
+$btnData.FlatAppearance.MouseOverBackColor = $C.Grey1
+$btnData.FlatAppearance.MouseDownBackColor = $C.Grey2
 $btnData.BackColor = $C.Surface
-$btnData.ForeColor = $C.Text
+$btnData.ForeColor = $C.Ink
 $btnData.Font = $F.Small
 $btnData.Cursor = 'Hand'
 $btnData.Enabled = $false
@@ -284,14 +363,14 @@ $form.Controls.Add($btnData)
 # ---------------------------------------------------------------- 主动作
 $btnGo = New-Object System.Windows.Forms.Button
 $btnGo.Text = '开始安装'
-$btnGo.Location = New-Object System.Drawing.Point(32, 306)
-$btnGo.Size = New-Object System.Drawing.Size(700, 46)
+$btnGo.Location = New-Object System.Drawing.Point(24, 284)
+$btnGo.Size = New-Object System.Drawing.Size(472, 42)
 $btnGo.FlatStyle = 'Flat'
 $btnGo.FlatAppearance.BorderSize = 0
-$btnGo.FlatAppearance.MouseOverBackColor = $C.PrimaryHi
-$btnGo.FlatAppearance.MouseDownBackColor = $C.PrimaryHi
-$btnGo.BackColor = $C.Primary
-$btnGo.ForeColor = [System.Drawing.Color]::White
+$btnGo.FlatAppearance.MouseOverBackColor = $C.AccentHi
+$btnGo.FlatAppearance.MouseDownBackColor = $C.AccentHi
+$btnGo.BackColor = $C.Accent
+$btnGo.ForeColor = $C.AccentOn
 $btnGo.Font = $F.Btn
 $btnGo.Cursor = 'Hand'
 $form.Controls.Add($btnGo)
@@ -299,33 +378,43 @@ $form.Controls.Add($btnGo)
 # ---------------------------------------------------------------- 高级 + 日志
 $lnkAdv = New-Object System.Windows.Forms.Label
 $lnkAdv.Text = '高级选项'
-$lnkAdv.Location = New-Object System.Drawing.Point(32, 374)
+$lnkAdv.Location = New-Object System.Drawing.Point(24, 338)
 $lnkAdv.AutoSize = $true
-$lnkAdv.ForeColor = $C.Muted
+$lnkAdv.ForeColor = $C.Grey3
 $lnkAdv.Font = $F.Link
 $lnkAdv.Cursor = 'Hand'
 $form.Controls.Add($lnkAdv)
 
 $lnkLog = New-Object System.Windows.Forms.Label
-$lnkLog.Text = '隐藏日志'
-$lnkLog.Location = New-Object System.Drawing.Point(96, 374)
-$lnkLog.AutoSize = $true
-$lnkLog.ForeColor = $C.Muted
+$lnkLog.Text = '显示日志'
+$lnkLog.Location = New-Object System.Drawing.Point(424, 338)
+$lnkLog.Size = New-Object System.Drawing.Size(72, 15)
+$lnkLog.TextAlign = 'MiddleRight'
+$lnkLog.ForeColor = $C.Grey3
 $lnkLog.Font = $F.Link
 $lnkLog.Cursor = 'Hand'
 $form.Controls.Add($lnkLog)
 
 $script:LogBox = New-Object System.Windows.Forms.TextBox
-$script:LogBox.Location = New-Object System.Drawing.Point(32, 404)
-$script:LogBox.Size = New-Object System.Drawing.Size(700, 128)
+$script:LogBox.Location = New-Object System.Drawing.Point(24, 376)
+$script:LogBox.Size = New-Object System.Drawing.Size(472, 128)
 $script:LogBox.Multiline = $true
 $script:LogBox.ScrollBars = 'Vertical'
 $script:LogBox.ReadOnly = $true
 $script:LogBox.BorderStyle = 'FixedSingle'
-$script:LogBox.BackColor = $C.LogBg
-$script:LogBox.ForeColor = [System.Drawing.Color]::FromArgb(75, 85, 99)
+$script:LogBox.BackColor = $C.Grey1
+$script:LogBox.ForeColor = $C.Ink
 $script:LogBox.Font = $F.Mono
+$script:LogBox.Visible = $false
 $form.Controls.Add($script:LogBox)
+
+function Set-LogVisible {
+    param([bool]$On)
+    $script:LogBox.Visible = $On
+    $lnkLog.Text = if ($On) { '隐藏日志' } else { '显示日志' }
+    $h = if ($On) { $script:HExpanded } else { $script:HCompact }
+    $form.ClientSize = New-Object System.Drawing.Size(520, $h)
+}
 
 # ================================================================ 状态
 $script:Info = $null
@@ -459,15 +548,26 @@ $chkData.add_CheckedChanged({
         $txtData.Enabled = $on -and (-not $script:Busy)
         $btnData.Enabled = $on -and (-not $script:Busy)
         if ($on) {
+            $chkData.BackColor = $C.Tint
+            $chkData.ForeColor = $C.Accent
+            $chkData.FlatAppearance.BorderColor = $C.Accent
+            $chkData.FlatAppearance.BorderSize = 1
+            $chkData.FlatAppearance.MouseOverBackColor = $C.Grey1
             $txtData.BackColor = $C.Surface
-            $txtData.ForeColor = $C.Text
+            $txtData.ForeColor = $C.Ink
             if (-not $txtData.Text -and $script:Info) {
                 $txtData.Text = Join-Path $script:Config.DataRoot ($script:Info.AppName + '-Data')
             }
         } else {
-            $txtData.BackColor = $C.Bg
-            $txtData.ForeColor = $C.Muted
+            $chkData.BackColor = $C.Surface
+            $chkData.ForeColor = $C.Ink
+            $chkData.FlatAppearance.BorderColor = $C.Grey2
+            $chkData.FlatAppearance.BorderSize = 1
+            $chkData.FlatAppearance.MouseOverBackColor = $C.Grey1
+            $txtData.BackColor = $C.Grey1
+            $txtData.ForeColor = $C.Grey3
         }
+        $chkData.Invalidate()
         $script:Config.RedirectData = $on
         Save-Config
     } catch {
@@ -489,13 +589,7 @@ $txtDir.add_TextChanged({
 })
 
 $lnkLog.add_Click({
-    if ($script:LogBox.Visible) {
-        $script:LogBox.Visible = $false
-        $lnkLog.Text = '显示日志'
-    } else {
-        $script:LogBox.Visible = $true
-        $lnkLog.Text = '隐藏日志'
-    }
+    try { Set-LogVisible (-not $script:LogBox.Visible) } catch { }
 })
 
 $lnkAdv.add_Click({ if (-not $script:Busy) { Show-Advanced } })
@@ -1046,18 +1140,14 @@ $lnkLog.add_MouseLeave({ $lnkLog.ForeColor = $C.Muted })
 
 $form.add_Shown({
     try {
-        $lblTo.BackColor = $C.Bg
-        $chkData.BackColor = $C.Bg
-        $lnkAdv.BackColor = $C.Bg
-        $lnkLog.BackColor = $C.Bg
-        Set-RoundedRegion -Control $btnGo -Radius 8
-        Set-RoundedRegion -Control $btnDir -Radius 6
-        Set-RoundedRegion -Control $btnData -Radius 6
-        $btnDir.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(249, 250, 251)
-        $btnData.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(249, 250, 251)
+        $lblTo.BackColor = $C.Paper
+        $lnkAdv.BackColor = $C.Paper
+        $lnkLog.BackColor = $C.Paper
+        if (-not $chkData.Checked) { $chkData.BackColor = $C.Surface; $chkData.ForeColor = $C.Ink }
         Append-Log '把安装包拖进来，或者点一下上面那个框选择文件。'
         if (-not (Test-IsAdmin)) { Append-Log '（当前不是管理员，往系统目录装可能会失败）' }
         if ($script:Config.RedirectData) { $chkData.Checked = $true }
+
     } catch { }
 })
 
